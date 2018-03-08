@@ -20,13 +20,13 @@ import (
 	"crypto/tls"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
 	"os"
 	"sync"
 	"time"
-
 	"golang.org/x/net/http2"
 )
 
@@ -47,6 +47,8 @@ type result struct {
 }
 
 type Work struct {
+	SrcIp1	string
+	SrcIp2	string
 	// Request is the request to be made.
 	Request *http.Request
 
@@ -216,29 +218,49 @@ func (b *Work) runWorkers() {
 	var wg sync.WaitGroup
 	wg.Add(b.C)
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-			ServerName:         b.Request.Host,
-		},
-		MaxIdleConnsPerHost: min(b.C, maxIdleConn),
-		DisableCompression:  b.DisableCompression,
-		DisableKeepAlives:   b.DisableKeepAlives,
-		Proxy:               http.ProxyURL(b.ProxyAddr),
-	}
-	if b.H2 {
-		http2.ConfigureTransport(tr)
-	} else {
-		tr.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
-	}
-	client := &http.Client{Transport: tr, Timeout: time.Duration(b.Timeout) * time.Second}
 
 	// Ignore the case where b.N % b.C != 0.
 	for i := 0; i < b.C; i++ {
-		go func() {
+
+
+		IpRange := []string{b.SrcIp1, b.SrcIp2}
+		localAddr1 := IpRange[i%2]
+		
+		localAddr, err := net.ResolveIPAddr("ip", localAddr1)
+		if err != nil {
+		  panic(err)
+		}
+
+		localTCPAddr := net.TCPAddr{
+    		IP: localAddr.IP,
+		}
+
+		go func(localAddress net.TCPAddr) {
+
+			tr := &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+					ServerName:         b.Request.Host,
+				},
+				MaxIdleConnsPerHost: min(b.C, maxIdleConn),
+				DisableCompression:  b.DisableCompression,
+				DisableKeepAlives:   b.DisableKeepAlives,
+				Proxy:               http.ProxyURL(b.ProxyAddr),
+				DialContext:  (&net.Dialer{
+					LocalAddr: &localAddress,
+				}).DialContext,
+
+			}
+			if b.H2 {
+				http2.ConfigureTransport(tr)
+			} else {
+				tr.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+			}
+			client := &http.Client{Transport: tr, Timeout: time.Duration(b.Timeout) * time.Second}
+
 			b.runWorker(client, b.N/b.C)
 			wg.Done()
-		}()
+		}(localTCPAddr)
 	}
 	wg.Wait()
 }
@@ -266,3 +288,4 @@ func min(a, b int) int {
 	}
 	return b
 }
+
