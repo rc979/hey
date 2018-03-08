@@ -55,6 +55,8 @@ var (
 	q = flag.Float64("q", 0, "")
 	t = flag.Int("t", 20, "")
 	z = flag.Duration("z", 0, "")
+	srcip1 = flag.String("srcip1","","")
+	srcip2 = flag.String("srcip2","","")
 
 	h2   = flag.Bool("h2", false, "")
 	cpus = flag.Int("cpus", runtime.GOMAXPROCS(-1), "")
@@ -99,6 +101,8 @@ Options:
   -disable-redirects    Disable following of HTTP redirects
   -cpus                 Number of used cpu cores.
                         (default for current machine is %d cores)
+  -srcip1		Source IP address 1
+  -srcip2		Source IP address 2
 `
 
 func main() {
@@ -119,6 +123,10 @@ func main() {
 	conc := *c
 	q := *q
 	dur := *z
+
+	srcip1 := *srcip1
+	srcip2 := *srcip2
+ 
 
 	if dur > 0 {
 		num = math.MaxInt32
@@ -217,6 +225,8 @@ func main() {
 	req.Header = header
 
 	w := &requester.Work{
+		SrcIp1:		    srcip1,
+		SrcIp2:	            srcip2,
 		Request:            req,
 		RequestBody:        bodyAll,
 		N:                  num,
